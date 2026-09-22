@@ -9,14 +9,21 @@ okey/
   cards.py      kartların sayıya çevrilmesi + insan okunur yazım
   scoring.py    önceden hesaplanmış "üçlü → puan" tablosu
   engine.py     tur akışı, eylem uzayı, geçerli hamle maskesi
+  env.py        öğrenen ajanlar için ortam (reset / step / ödül)
+  agents/       referans oyuncular
+play.py         terminalden elle oyna
+evaluate.py     ajanları aynı destelerde karşılaştır
+replay.py       ajanları hamle hamle izle, nerede ayrıldıklarını gör
 tests/          her kural için bir test
 ```
 
 ```powershell
-# Terminalden elle oyna — kuralları gözle doğrulamak için
-.\.venv\Scripts\python.exe play.py
-.\.venv\Scripts\python.exe play.py --seed 42      # aynı desteyi tekrar oyna
-.\.venv\Scripts\python.exe play.py --random 500   # 500 turu rastgele oynat
+# Terminalden elle oyna — tur bitince ajanlarla kıyaslar
+.\.venv\Scripts\python.exe play.py --seed 25
+
+# Ajanları karşılaştır / izle
+.\.venv\Scripts\python.exe evaluate.py
+.\.venv\Scripts\python.exe replay.py --seed 25 --quiet
 
 # Testler
 .\.venv\Scripts\python.exe -m pytest tests -q
@@ -121,12 +128,56 @@ eşleştirmeden ölçseydik belirsizliğin ne olacağını da yazıyor.
 Motor saf Python'da **~6.200 oyun/saniye** çalışıyor (rastgele ajanla). Bir
 milyon oyun ≈ 2.7 dakika — RL eğitimi için fazlasıyla yeterli.
 
+## RL ortamı
+
+`okey/env.py` motoru öğrenen ajanların beklediği arayüze sarıyor:
+
+```python
+from okey.env import OkeyEnv
+env = OkeyEnv()
+obs = env.reset(seed=1)
+obs, reward, done, info = env.step(action)
+mask = env.action_mask()
+```
+
+```powershell
+.\.venv\Scripts\python.exe -m okey.env    # gözlemin ne olduğunu satır satır yazar
+```
+
+**Gözlem — 52 sayı.** İlk 24'ü "bu kart elimde mi", sonraki 24'ü "bu kart hâlâ
+gelebilir mi", son 4'ü ölçeklenmiş sayaçlar (kalan kart, puan, üçlü, el).
+Silinmiş kart ayrı alan istemiyor: hem elde hem destede 0 ise o kart gitmiş.
+
+Bu gözlem **yeterli**. Ajanın bilmediği tek şey destenin sırası, ama sıra
+rastgele olduğu için "hangi kartlar kaldı" bilgisi karar vermek için gereken her
+şeyi taşıyor. Gözlem destenin sırasını asla sızdırmıyor — bunu bir test
+doğruluyor.
+
+**Ödül — varsayılan olarak oyunun kendi puanı.** Her hamlede kazanılan puan;
+turun toplam ödülü turun toplam puanına eşit oluyor. Yani ajanın en yükseğe
+çıkardığı şey oyunun gerçek amacıyla birebir aynı.
+
+İki isteğe bağlı *ödül şekillendirmesi* var, ikisi de kapalı:
+
+| Ayar | Ne yapar | Riski |
+|---|---|---|
+| `leftover_penalty` | tur sonunda elde kalan her kart için ceza | ajan puan getirmeyecekken bile kart harcamaya başlar |
+| `gold_bonus` | 400+ puanda tek seferlik ödül | amacı "ortalama puan"dan "altın sandık şansı"na çevirir |
+
+Bu ikincisi önemli bir ayrım: **ajan puanı değil ödülü en yükseğe çıkarır.**
+Altın peşindeki ajan daha çok kumar oynar, ortalaması düşer ama 400+ turların
+oranı artar. Hangisini istediğine karar vermen gereken bir yer.
+
+Geçersiz hamle cezası **yok** — gerek de yok. Ajan `action_mask()` sayesinde
+sadece geçerli hamleler arasından seçiyor, dolayısıyla kuralları öğrenmekle
+vakit kaybetmiyor.
+
 ## Yol haritası
 
 - [x] **Faz 1** — Motor, puanlama, eylem uzayı, testler
-- [ ] **Faz 2** — Ölçüm altyapısı + referans oyuncular (rastgele / açgözlü /
+- [x] **Faz 2** — Ölçüm altyapısı + referans oyuncular (rastgele / açgözlü /
       ileri-bakışlı). Hepsi aynı destelerde eşleştirilmiş karşılaştırma.
-- [ ] **Faz 3** — RL ortamı: `reset / step / observation / action_mask / reward`
+- [x] **Faz 3** — RL ortamı: `reset / step / observation / action_mask / reward`
 - [ ] **Faz 4** — Öğrenen ajan: özellik tabanlı lineer Q-öğrenme
 - [ ] **Faz 5** — Arayüz (yeni kurallara göre)
 - [ ] **Faz 6** — Ekran okuma ve otomatik oynatma
