@@ -103,12 +103,20 @@ def print_summary(runs: List[Run]) -> None:
                   f"{best.score - worst.score} puan onde")
 
 
-def build_agent(name: str, rollouts: int, seed: int) -> Agent:
+def build_agent(name: str, okey: Okey, rollouts: int = 12, seed: int = 0,
+                weights: str = "agirliklar.json") -> Agent:
+    """Isimden ajan kurar. Ogrenen ajan egitilmis agirliklari yukler."""
     cls = REGISTRY[name]
     if name == "ileri":
         return cls(rollouts=rollouts, seed=seed)
     if name == "rastgele":
         return cls(seed=seed)
+    if name == "ogrenen":
+        agent = cls.load_if_trained(okey, weights)
+        if agent is None:
+            raise SystemExit(
+                f"  '{weights}' bulunamadi. Once egit:  python train.py")
+        return agent
     return cls()
 
 
@@ -118,6 +126,7 @@ def main() -> None:
     parser.add_argument("--agents", nargs="+", default=["acgozlu", "ileri"],
                         choices=list(REGISTRY))
     parser.add_argument("--rollouts", type=int, default=12)
+    parser.add_argument("--weights", default="agirliklar.json")
     parser.add_argument("--quiet", action="store_true",
                         help="hamleleri yazma, sadece ozet ve ayrilma noktasi")
     args = parser.parse_args()
@@ -128,7 +137,8 @@ def main() -> None:
     okey = Okey()
     print(f"\n  SEED {args.seed} — ayni deste, {len(args.agents)} ajan")
 
-    runs = [run_agent(okey, build_agent(name, args.rollouts, 0), args.seed)
+    runs = [run_agent(okey, build_agent(name, okey, args.rollouts, 0, args.weights),
+                      args.seed)
             for name in args.agents]
     if not args.quiet:
         for run in runs:

@@ -173,12 +173,20 @@ def write_csv(path: str, results: List[Result], seeds: Sequence[int]) -> None:
 
 # ------------------------------------------------------------------- giris
 
-def build_agent(name: str, rollouts: int, seed: int) -> Agent:
+def build_agent(name: str, okey: Okey, rollouts: int = 12, seed: int = 0,
+                weights: str = "agirliklar.json") -> Agent:
+    """Isimden ajan kurar. Ogrenen ajan egitilmis agirliklari yukler."""
     cls = REGISTRY[name]
     if name == "ileri":
         return cls(rollouts=rollouts, seed=seed)
     if name == "rastgele":
         return cls(seed=seed)
+    if name == "ogrenen":
+        agent = cls.load_if_trained(okey, weights)
+        if agent is None:
+            raise SystemExit(
+                f"  '{weights}' bulunamadi. Once egit:  python train.py")
+        return agent
     return cls()
 
 
@@ -191,6 +199,8 @@ def main() -> None:
     parser.add_argument("--rollouts", type=int, default=12,
                         help="ileri-bakisli ajanin simulasyon sayisi")
     parser.add_argument("--csv", default=None, help="her turu bu dosyaya yaz")
+    parser.add_argument("--weights", default="agirliklar.json",
+                        help="ogrenen ajanin agirlik dosyasi")
     args = parser.parse_args()
 
     if hasattr(sys.stdout, "reconfigure"):
@@ -200,7 +210,8 @@ def main() -> None:
     seeds = list(range(args.seed_start, args.seed_start + args.games))
     results = []
     for name in args.agents:
-        agent = build_agent(name, args.rollouts, args.seed_start)
+        agent = build_agent(name, okey, args.rollouts, args.seed_start,
+                            args.weights)
         print(f"  {agent.name} oynuyor...", end="", flush=True)
         result = run(okey, agent, seeds)
         print(f"\r  {' ' * 40}\r", end="")

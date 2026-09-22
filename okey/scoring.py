@@ -74,7 +74,7 @@ class ScoreTable:
     `points(triple)` sifir donerse uclu gecersizdir.
     """
 
-    __slots__ = ("deck", "rules", "_points", "_combos", "_by_card")
+    __slots__ = ("deck", "rules", "_points", "_combos", "_by_card", "_by_pair")
 
     def __init__(self, deck: Deck, rules: Rules = DEFAULT_RULES):
         self.deck = deck
@@ -98,6 +98,19 @@ class ScoreTable:
         self._by_card: Dict[int, Tuple[Tuple[Triple, int], ...]] = {
             card: tuple(sorted(rows, key=lambda row: -row[1]))
             for card, rows in by_card.items()
+        }
+
+        # "Bu ikiliyi hangi kart tamamlar, kac puana." Ogrenen ajanin en
+        # onemli sorusu bu: elimdeki iki kart bir seye yariyor mu?
+        by_pair: Dict[Tuple[int, int], List[Tuple[int, int]]] = {}
+        for triple, points in self._points.items():
+            a, b, c = triple
+            by_pair.setdefault((a, b), []).append((c, points))
+            by_pair.setdefault((a, c), []).append((b, points))
+            by_pair.setdefault((b, c), []).append((a, points))
+        self._by_pair: Dict[Tuple[int, int], Tuple[Tuple[int, int], ...]] = {
+            pair: tuple(sorted(rows, key=lambda row: -row[1]))
+            for pair, rows in by_pair.items()
         }
 
     # ------------------------------------------------------------- sorgular
@@ -128,6 +141,21 @@ class ScoreTable:
         """
         for triple, points in self._by_card[card]:
             if triple[0] in available and triple[1] in available and triple[2] in available:
+                return points
+        return 0
+
+    def best_pair_points(self, first: int, second: int, available: frozenset) -> int:
+        """Bu ikiliyi tamamlayabilecek en yuksek puanli uclu.
+
+        `available` = elde olan + destede kalan kartlar. Ucuncu kart artik
+        oyunda yoksa o uclu de yok. 0 donerse ikili bir ise yaramiyor.
+        """
+        pair = (first, second) if first < second else (second, first)
+        rows = self._by_pair.get(pair)
+        if not rows:
+            return 0
+        for card, points in rows:          # puana gore sirali: ilk uyan en iyisi
+            if card in available:
                 return points
         return 0
 

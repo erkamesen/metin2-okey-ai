@@ -92,11 +92,20 @@ numaralı kart" her zaman elindeki en küçük karttır.
 Üçü de öğrenmiyor; elle yazılmış kurallarla oynuyorlar. Öğrenen ajanın yenmesi
 gereken çıta bunlar. Her biri bir öncekine tek bir fikir ekliyor:
 
-| Ajan | Fikir | Ortalama (300 tur) |
-|---|---|---|
-| **rastgele** | geçerli hamleler arasından rastgele | 84.6 |
-| **açgözlü** | üçlü varsa en yükseğini kur, yoksa en ölü kartı sil | 272.8 |
-| **ileri-bakışlı** | her hamleyi deneyip turu sonuna kadar simüle et | 295.5 |
+| Ajan | Fikir | Ortalama | ms/tur |
+|---|---|---|---|
+| **rastgele** | geçerli hamleler arasından rastgele | 83.5 | 0.2 |
+| **açgözlü** | üçlü varsa en yükseğini kur, yoksa en ölü kartı sil | 271.6 | 0.2 |
+| **öğrenen** | özelliklerin ağırlıklarını kendi öğrenir | 289.1 | 1.1 |
+| **ileri-bakışlı** | her hamleyi deneyip turu sonuna kadar simüle et | 297.5 | 93.9 |
+
+400 tur, hepsi aynı destelerde. Eşleştirilmiş farklar:
+
+```
+ileri-bakisli - ogrenen     +8.4  ±2.9   turların %52'sinde daha iyi
+ogrenen       - acgozlu    +17.4  ±3.0   turların %57'sinde daha iyi
+acgozlu       - rastgele  +188.1  ±3.9   turların %100'ünde daha iyi
+```
 
 ```powershell
 .\.venv\Scripts\python.exe evaluate.py
@@ -113,9 +122,9 @@ kartları rastgele sıralayıp turu sonuna kadar oynatıyor, ortalaması en yük
 hamleyi seçiyor. İki nokta kritik — ajan destenin gerçek sırasına bakmaz
 (`game.with_deck`), ve bütün adaylar **aynı** deste sıralarında denenir.
 
-İlginç bir ayrıntı: ileri-bakışlı daha **az** üçlü kuruyor (4.6 vs 5.0) ama
-daha çok puan alıyor. Yani bazen küçük bir üçlüyü kurmayıp beklemek daha
-iyi — açgözlünün göremediği şey bu.
+İlginç bir ayrıntı: ileri-bakışlı ve öğrenen daha **az** üçlü kuruyor (4.6 ve
+4.5 vs açgözlünün 5.0) ama daha çok puan alıyor. Yani bazen küçük bir üçlüyü
+kurmayıp beklemek daha iyi — açgözlünün göremediği şey bu.
 
 ### Neden hep aynı desteler?
 
@@ -172,13 +181,74 @@ Geçersiz hamle cezası **yok** — gerek de yok. Ajan `action_mask()` sayesinde
 sadece geçerli hamleler arasından seçiyor, dolayısıyla kuralları öğrenmekle
 vakit kaybetmiyor.
 
+## Öğrenen ajan
+
+```powershell
+.\.venv\Scripts\python.exe train.py                  # ~1 dakika, ağırlıkları kaydeder
+.\.venv\Scripts\python.exe evaluate.py               # öğrenen ajan da tabloda
+.\.venv\Scripts\python.exe replay.py --seed 25 --agents acgozlu ogrenen --quiet
+```
+
+### Neden ham gözlem yetmiyor
+
+`env.observe()` 52 sayı veriyor ve bilgi olarak **eksiksiz**. Ama *lineer* bir
+model için kullanışsız: "6k + 7k + 8k birlikte 100 puan eder" bilgisi üç kartın
+**etkileşimi**, lineer model ise her karta bir ağırlık verip toplar. Elinde 6k
+ve 7k varken 8k'nın çok değerli olması, tek başınayken olmaması — bunu ifade
+edemez.
+
+Çözüm: yapıyı biz çıkarıp ajana hazır veriyoruz. `okey/features.py` 11 özellik
+üretiyor — "elindeki en iyi ikili kaç puanlık bir üçlüyü bekliyor", "kaç kartın
+hiçbir işe yaramıyor" gibi. Ajan bunlara **ne kadar değer vereceğini** öğreniyor.
+
+Bu, daha önce elle yaptığımız işin otomatikleşmiş hali: eski sürümde
+`empty_slot_factor` ve `look_factor` katsayılarını ızgara taramasıyla
+ayarlamıştık, saatler sürmüştü ve sadece iki katsayıydı. Ajan aynı işi 11 katsayı
+için kendi yapıyor, bir dakikada.
+
+### Nasıl öğreniyor
+
+Sonraki-durum (afterstate) üzerinde TD öğrenme. Ajan her adımda "bu eylemi
+yaparsam ortaya çıkan durum ne kadar değerli" diye soruyor; değer tahmini
+`ağırlıklar · özellikler`. Seçim: en yüksek `hemen kazanılan puan + V(sonraki
+durum)`. Öğrenme: kendi tahminini, bir adım sonra gördüğü daha iyi bilgiye doğru
+çekiyor.
+
+Eylemin kendisi kesin, kart çekme rastgele — ikisini ayırmak öğrenmeyi belirgin
+şekilde kararlı kılıyor.
+
+Eğitim rastgele destelerde, ölçüm ise ajanın **hiç görmediği** sabit destelerde
+yapılıyor. Aynı desteleri kullansaydık ajan onları ezberleyip olduğundan iyi
+görünürdü.
+
+### Ajan ne öğrendi
+
+Ağırlıklar okunabilir — kara kutu değil:
+
+```
+destedeki_kart      +2.326  #######################
+canlilik_ort        +1.100  ##########
+canlilik_min        -0.420  ####
+ikinci_ikili        +0.411  ####
+tamamlanan_uclu     -0.349  ###
+...
+hazir_uclu          -0.071
+```
+
+En büyük ağırlık **destedeki kart sayısında**. Ajan kendi başına şunu bulmuş:
+*deste senin kaynağın, boşa harcama.* Kimse ona söylemedi.
+
+`hazir_uclu` ağırlığının sıfıra yakın olması da anlamlı — hazır üçlünün değeri
+zaten "hemen kazanılan puan" teriminde sayılıyor, değer fonksiyonunun onu tekrar
+hesaba katmasına gerek yok. Ajan bunu da kendi keşfetmiş.
+
 ## Yol haritası
 
 - [x] **Faz 1** — Motor, puanlama, eylem uzayı, testler
 - [x] **Faz 2** — Ölçüm altyapısı + referans oyuncular (rastgele / açgözlü /
       ileri-bakışlı). Hepsi aynı destelerde eşleştirilmiş karşılaştırma.
 - [x] **Faz 3** — RL ortamı: `reset / step / observation / action_mask / reward`
-- [ ] **Faz 4** — Öğrenen ajan: özellik tabanlı lineer Q-öğrenme
+- [x] **Faz 4** — Öğrenen ajan: özellik tabanlı TD öğrenme (289.1 puan)
 - [ ] **Faz 5** — Arayüz (yeni kurallara göre)
 - [ ] **Faz 6** — Ekran okuma ve otomatik oynatma
 
