@@ -130,7 +130,32 @@ def show_summary(screen: Screen, game) -> None:
           f"elde {summary['elde_kalan']} kart kaldi")
     if game.hand:
         print(f"  kullanilamayan: {screen.cards(game.hand)}")
+    compare_with_agents(screen, game)
     print()
+
+
+def compare_with_agents(screen: Screen, game) -> None:
+    """Ayni desteyi referans ajanlar oynasa kac alirdi.
+
+    Ortalamalara bakmak soyut kaliyor; ayni destede senin kac aldiginla
+    ajanlarin kac aldigini yan yana gormek cok daha ogretici.
+    """
+    try:
+        from okey.agents import GreedyAgent, LookaheadAgent, play_game
+    except ImportError:
+        return
+
+    print(screen.dim("\n  Ayni destede referans oyuncular:"))
+    rows = [("sen", game.score)]
+    for agent in (GreedyAgent(), LookaheadAgent(rollouts=12)):
+        rows.append((agent.name, play_game(game.okey, agent, game.seed).score))
+
+    best = max(score for _, score in rows)
+    for name, score in sorted(rows, key=lambda row: -row[1]):
+        mark = screen.bold("  <-- en iyi") if score == best else ""
+        print(f"   {name:<18}{score:>5} puan{mark}")
+    print(screen.dim(f"   (ayni destede tekrar dene: python play.py --seed {game.seed})"))
+    print(screen.dim(f"   (ajanlarin hamlelerini izle: python replay.py --seed {game.seed})"))
 
 
 # ------------------------------------------------------------------- oyun
