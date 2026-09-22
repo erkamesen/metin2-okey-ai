@@ -74,7 +74,7 @@ class ScoreTable:
     `points(triple)` sifir donerse uclu gecersizdir.
     """
 
-    __slots__ = ("deck", "rules", "_points", "_combos")
+    __slots__ = ("deck", "rules", "_points", "_combos", "_by_card")
 
     def __init__(self, deck: Deck, rules: Rules = DEFAULT_RULES):
         self.deck = deck
@@ -88,6 +88,18 @@ class ScoreTable:
                 self._points[triple] = combo.points
                 self._combos[triple] = combo
 
+        # "Bu karti iceren ucluler, puani yuksekten dusuge."
+        # Ajanlar "bu kart hala ise yarar mi" sorusunu bununla cevapliyor;
+        # sirali oldugu icin ilk uyan uclu zaten en iyisidir.
+        by_card: Dict[int, List[Tuple[Triple, int]]] = {c: [] for c in range(deck.size)}
+        for triple, points in self._points.items():
+            for card in triple:
+                by_card[card].append((triple, points))
+        self._by_card: Dict[int, Tuple[Tuple[Triple, int], ...]] = {
+            card: tuple(sorted(rows, key=lambda row: -row[1]))
+            for card, rows in by_card.items()
+        }
+
     # ------------------------------------------------------------- sorgular
 
     def points(self, triple: Triple) -> int:
@@ -99,6 +111,25 @@ class ScoreTable:
 
     def is_valid(self, triple: Triple) -> bool:
         return triple in self._points
+
+    def triples_containing(self, card: int) -> Tuple[Tuple[Triple, int], ...]:
+        """Bu karti iceren gecerli ucluler, puani yuksekten dusuge sirali."""
+        return self._by_card[card]
+
+    def best_use_of(self, card: int, available: frozenset) -> int:
+        """Elde kalan kartlarla bu kartin kurabilecegi en yuksek puanli uclu.
+
+        `available` = elde olan + destede kalan kartlar. Silinmis ya da uclu
+        yapilmis kartlar artik yok, o ucluler de olmuyor. 0 donerse kart
+        tamamen olu demektir.
+
+        Liste puana gore sirali oldugu icin ilk uyan uclu zaten en iyisi —
+        bulur bulmaz donuyoruz.
+        """
+        for triple, points in self._by_card[card]:
+            if triple[0] in available and triple[1] in available and triple[2] in available:
+                return points
+        return 0
 
     def describe(self, triple: Triple) -> str:
         combo = self._combos.get(triple)

@@ -80,11 +80,43 @@ seçtiği için **kuralları öğrenmekle vakit kaybetmiyor**, doğrudan stratej
 odaklanıyor. El her hamleden sonra sıralandığı için de indeksler kararlı — "0
 numaralı kart" her zaman elindeki en küçük karttır.
 
-## Ölçümler
+## Referans oyuncular
 
-| | Ortalama puan |
-|---|---|
-| Rastgele oynayan | ~84 |
+Üçü de öğrenmiyor; elle yazılmış kurallarla oynuyorlar. Öğrenen ajanın yenmesi
+gereken çıta bunlar. Her biri bir öncekine tek bir fikir ekliyor:
+
+| Ajan | Fikir | Ortalama (300 tur) |
+|---|---|---|
+| **rastgele** | geçerli hamleler arasından rastgele | 84.6 |
+| **açgözlü** | üçlü varsa en yükseğini kur, yoksa en ölü kartı sil | 272.8 |
+| **ileri-bakışlı** | her hamleyi deneyip turu sonuna kadar simüle et | 295.5 |
+
+```powershell
+.\.venv\Scripts\python.exe evaluate.py
+.\.venv\Scripts\python.exe evaluate.py --games 1000 --rollouts 20
+.\.venv\Scripts\python.exe evaluate.py --csv sonuclar.csv
+```
+
+**Açgözlü**nün "en ölü kartı sil" kuralı şu: her kart için "elde ve destede
+kalanlarla bu kart en iyi hangi üçlüyü kurabilir" hesaplanıyor, en düşüğü
+gidiyor. Hiçbir üçlü kuramayan kart 0 alır ve ilk o silinir.
+
+**İleri-bakışlı** Monte-Carlo yapıyor: her aday hamleden sonra görülmemiş
+kartları rastgele sıralayıp turu sonuna kadar oynatıyor, ortalaması en yüksek
+hamleyi seçiyor. İki nokta kritik — ajan destenin gerçek sırasına bakmaz
+(`game.with_deck`), ve bütün adaylar **aynı** deste sıralarında denenir.
+
+İlginç bir ayrıntı: ileri-bakışlı daha **az** üçlü kuruyor (4.6 vs 5.0) ama
+daha çok puan alıyor. Yani bazen küçük bir üçlüyü kurmayıp beklemek daha
+iyi — açgözlünün göremediği şey bu.
+
+### Neden hep aynı desteler?
+
+Tur puanlarının standart sapması ~50. İki ajanı farklı destelerde oynatırsan
+aradaki gerçek farkı görmek çok daha fazla tur gerektirir. `evaluate.py` bütün
+ajanları aynı seed listesinde oynatıp farkı **eşleştirilmiş** ölçüyor: her tur
+için "A bu destede B'den kaç puan fazla aldı" diyebiliyoruz. Çıktı, aynı farkı
+eşleştirmeden ölçseydik belirsizliğin ne olacağını da yazıyor.
 
 Motor saf Python'da **~6.200 oyun/saniye** çalışıyor (rastgele ajanla). Bir
 milyon oyun ≈ 2.7 dakika — RL eğitimi için fazlasıyla yeterli.

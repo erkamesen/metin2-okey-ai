@@ -281,3 +281,26 @@ class OkeyGame:
         clone.move_no = self.move_no
         clone._over = self._over
         return clone
+
+    def with_deck(self, order: Sequence[int]) -> "OkeyGame":
+        """Destesi verilen siraya konmus bir kopya.
+
+        Ileriye bakan ajan "bundan sonra ne olur" diye denemeler yaparken
+        destenin **gercek** sirasini bilmemeli — bilirse hile yapmis olur ve
+        olctugumuz sey gercek performansi yansitmaz. Bu yuzden ajan kendi
+        karistirdigi destelerle calisir; fonksiyon sadece kartlarin ayni
+        kartlar oldugunu dogrular.
+        """
+        if sorted(order) != sorted(self.deck):
+            raise IllegalMove("verilen deste, gorulmemis kartlarla ayni degil")
+        clone = self.copy()
+        clone.deck = list(order)
+        return clone
+
+    def sample_future(self, rng: random.Random) -> "OkeyGame":
+        """Gorulmemis kartlari rastgele siralayan bir kopya."""
+        order = list(self.deck)
+        rng.shuffle(order)
+        clone = self.copy()
+        clone.deck = order
+        return clone
