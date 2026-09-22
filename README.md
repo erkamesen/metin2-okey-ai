@@ -13,8 +13,17 @@ tests/          her kural için bir test
 ```
 
 ```powershell
+# Terminalden elle oyna — kuralları gözle doğrulamak için
+.\.venv\Scripts\python.exe play.py
+.\.venv\Scripts\python.exe play.py --seed 42      # aynı desteyi tekrar oyna
+.\.venv\Scripts\python.exe play.py --random 500   # 500 turu rastgele oynat
+
+# Testler
 .\.venv\Scripts\python.exe -m pytest tests -q
 ```
+
+`play.py` içinde: eylem numarasını yaz, `k` ile destede kalan kartları gör
+(kart sayma), `y` yeni tur, `q` çıkış.
 
 ## Oyunun kuralları
 
