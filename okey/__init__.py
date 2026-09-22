@@ -1,15 +1,23 @@
-"""Metin2 Okey - kural motoru + karar agent'i + canli danisman UI."""
-from .cards import Card, CardCodec, build_deck, shuffled_deck
-from .engine import Action, InvalidCard, MoveOutcome, OkeyGame, Slot, DISCARD, PLACE
-from .rules import Rules, load_rules
-from .scoring import ComboResult, classify, score_combo
-from .solver import Solver, SolverConfig
+"""Metin2 Okey — oyun motoru ve ogrenen ajan.
 
-__version__ = "0.2.0"
+Hizli baslangic:
+
+    from okey import Okey
+    okey = Okey()                  # kurallar + deste + puan tablosu
+    game = okey.new_game(seed=1)
+    while not game.is_over:
+        game.apply(game.legal_actions()[0])
+    print(game.describe())
+"""
+from .cards import Deck
+from .engine import DISCARD, MELD, IllegalMove, Move, Okey, OkeyGame
+from .rules import DEFAULT_RULES, Rules, scoring_rows
+from .scoring import GROUP, RUN_MIXED, RUN_SAME, ComboKind, ScoreTable, classify
+
+__version__ = "0.3.0"
 __all__ = [
-    "Card", "CardCodec", "build_deck", "shuffled_deck",
-    "Action", "MoveOutcome", "OkeyGame", "Slot", "PLACE", "DISCARD", "InvalidCard",
-    "Rules", "load_rules",
-    "ComboResult", "classify", "score_combo",
-    "Solver", "SolverConfig",
+    "Okey", "OkeyGame", "Move", "IllegalMove", "DISCARD", "MELD",
+    "Rules", "DEFAULT_RULES", "scoring_rows",
+    "Deck", "ScoreTable", "ComboKind", "classify",
+    "GROUP", "RUN_SAME", "RUN_MIXED",
 ]

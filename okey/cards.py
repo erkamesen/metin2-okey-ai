@@ -1,101 +1,121 @@
-"""Kart ve deste tanimlari."""
+"""Kartlarin sayiya cevrilmesi.
+
+Her kart bir tamsayi:
+
+    kart = renk_indeksi * sayi_adedi + (sayi - 1)
+
+Yani 24 kartlik destede 0..23 arasi sayilar. Nesne yerine tamsayi kullanmanin
+sebebi hiz: karsilastirma, kopyalama, siralama ve kume islemleri tamsayilarda
+kat kat ucuz. Milyonlarca oyun simule edecegimiz icin bu fark buyuk.
+
+Insan tarafi icin `Deck.label` / `Deck.parse` var: "5k" = 5 kirmizi.
+"""
 from __future__ import annotations
 
 import random
-from dataclasses import dataclass
-from typing import Iterable, List, Sequence
+from typing import Dict, Iterable, List, Sequence, Tuple
+
+from .rules import DEFAULT_RULES, Rules
 
 
-@dataclass(frozen=True, order=True)
-class Card:
-    """Tek bir okey karti: bir sayi ve bir renk."""
+class Deck:
+    """Bir kural setinin kart evreni: kodlama, cozme ve yazim.
 
-    rank: int
-    color: str
-
-    def __str__(self) -> str:  # "5r" gibi kisa gosterim
-        return f"{self.rank}{self.color[0]}"
-
-    def to_dict(self) -> dict:
-        return {"rank": self.rank, "color": self.color}
-
-    @classmethod
-    def from_dict(cls, data: dict) -> "Card":
-        return cls(int(data["rank"]), str(data["color"]))
-
-
-def build_deck(ranks: Sequence[int], colors: Sequence[str], copies: int = 1) -> List[Card]:
-    """Config'teki sayi/renk listesinden tam desteyi uretir."""
-    deck: List[Card] = []
-    for _ in range(copies):
-        for color in colors:
-            for rank in ranks:
-                deck.append(Card(rank, color))
-    return deck
-
-
-def shuffled_deck(
-    ranks: Sequence[int],
-    colors: Sequence[str],
-    copies: int = 1,
-    rng: random.Random | None = None,
-) -> List[Card]:
-    deck = build_deck(ranks, colors, copies)
-    (rng or random).shuffle(deck)
-    return deck
-
-
-def counter_of(cards: Iterable[Card]) -> dict:
-    """Kart -> adet sozlugu (gorulmemis kart havuzu hesaplari icin)."""
-    counts: dict = {}
-    for card in cards:
-        counts[card] = counts.get(card, 0) + 1
-    return counts
-
-
-class CardCodec:
-    """Kartlarin kisa yazimi: "7r" = 7 kirmizi.
-
-    Renk kisaltmalari config'teki renk listesinden uretilir ve benzersiz olmasi
-    garanti edilir (or. blue + black -> "b" ve "bl"). Hem LLM protokolunde hem
-    de kullanicinin elle yazdigi girdide bu yazim kullanilir.
+    Kural seti oyun boyunca degismedigi icin bu nesne de bir kez kurulup
+    her yerde paylasilabilir.
     """
 
-    def __init__(self, colors: Sequence[str]):
-        self.colors = list(colors)
-        self.to_code: dict = {}
-        for color in self.colors:
+    __slots__ = ("rules", "ranks", "colors", "n_ranks", "n_colors", "size",
+                 "_rank_of", "_color_of", "_labels", "_codes", "_by_label")
+
+    def __init__(self, rules: Rules = DEFAULT_RULES):
+        self.rules = rules
+        self.ranks: Tuple[int, ...] = tuple(rules.ranks)
+        self.colors: Tuple[str, ...] = tuple(rules.colors)
+        self.n_ranks = len(self.ranks)
+        self.n_colors = len(self.colors)
+        self.size = self.n_ranks * self.n_colors
+
+        # Sik kullanilan cevrimler onceden hesaplanip listeye konuyor;
+        # oyun sirasinda bolme/modulo yapmaktan daha hizli.
+        self._rank_of: Tuple[int, ...] = tuple(
+            self.ranks[card % self.n_ranks] for card in range(self.size))
+        self._color_of: Tuple[int, ...] = tuple(
+            card // self.n_ranks for card in range(self.size))
+
+        self._codes: Tuple[str, ...] = self._unique_codes(self.colors)
+        self._labels: Tuple[str, ...] = tuple(
+            f"{self._rank_of[c]}{self._codes[self._color_of[c]]}" for c in range(self.size))
+        self._by_label: Dict[str, int] = {
+            label.lower(): card for card, label in enumerate(self._labels)}
+
+    # ------------------------------------------------------------- cevrimler
+
+    @staticmethod
+    def _unique_codes(colors: Sequence[str]) -> Tuple[str, ...]:
+        """Renk kisaltmalari: kirmizi->k, mavi->m, sari->s.
+
+        Iki renk ayni harfle baslarsa (or. mavi/mor) kisaltma otomatik olarak
+        uzatilir, boylece yazim her zaman tek anlamli kalir.
+        """
+        codes: List[str] = []
+        for color in colors:
             length = 1
             code = color[:length].lower()
-            while code in self.to_code.values() and length < len(color):
+            while code in codes and length < len(color):
                 length += 1
                 code = color[:length].lower()
-            self.to_code[color] = code
-        self.from_code = {code: color for color, code in self.to_code.items()}
+            codes.append(code)
+        return tuple(codes)
 
-    def label(self, card: Card) -> str:
-        return f"{card.rank}{self.to_code.get(card.color, card.color)}"
+    def card(self, rank: int, color: str) -> int:
+        """Sayi + renk adindan kart numarasi."""
+        return self.colors.index(color) * self.n_ranks + self.ranks.index(rank)
 
-    def parse(self, text: str) -> Card:
-        raw = text.strip().lower().replace("-", "").replace("_", "")
-        if not raw:
-            raise ValueError("bos kart")
-        digits = ""
-        index = 0
-        while index < len(raw) and raw[index].isdigit():
-            digits += raw[index]
-            index += 1
-        suffix = raw[index:]
-        if not digits or not suffix:
-            raise ValueError(f"kart okunamadi: {text!r} (ornek: 7r)")
-        color = self.from_code.get(suffix)
-        if color is None:
-            color = next((c for c in self.colors if c.lower() == suffix), None)
-        if color is None:
-            raise ValueError(f"bilinmeyen renk: {suffix!r} ({', '.join(self.from_code)})")
-        return Card(int(digits), color)
+    def rank(self, card: int) -> int:
+        return self._rank_of[card]
 
-    def parse_many(self, text: str) -> List[Card]:
-        """"7r 4b, 1g" gibi serbest yazimi kart listesine cevirir."""
-        parts = [p for p in text.replace(",", " ").replace(";", " ").split() if p]
+    def color(self, card: int) -> int:
+        """Rengin **indeksi** (adi degil); karsilastirmalar icin."""
+        return self._color_of[card]
+
+    def color_name(self, card: int) -> str:
+        return self.colors[self._color_of[card]]
+
+    def label(self, card: int) -> str:
+        return self._labels[card]
+
+    def labels(self, cards: Iterable[int]) -> str:
+        return " ".join(self._labels[c] for c in cards)
+
+    def parse(self, text: str) -> int:
+        """"5k" -> kart numarasi. Bilinmeyen yazimda ValueError."""
+        key = text.strip().lower().replace("-", "").replace("_", "")
+        card = self._by_label.get(key)
+        if card is None:
+            raise ValueError(
+                f"kart okunamadi: {text!r} (ornek: {self._labels[0]}, "
+                f"renkler: {', '.join(self._codes)})")
+        return card
+
+    def parse_many(self, text: str) -> List[int]:
+        """"5k 6k 7k" ya da "5k, 6k, 7k" -> kart listesi."""
+        parts = text.replace(",", " ").replace(";", " ").split()
         return [self.parse(part) for part in parts]
+
+    # ------------------------------------------------------------- uretimler
+
+    def all_cards(self) -> List[int]:
+        return list(range(self.size))
+
+    def shuffled(self, rng: random.Random) -> List[int]:
+        """Karilmis deste. Son elemandan cekilecek sekilde kullanilir."""
+        deck = list(range(self.size))
+        rng.shuffle(deck)
+        return deck
+
+    def __len__(self) -> int:
+        return self.size
+
+    def __repr__(self) -> str:
+        return f"<Deck {self.size} kart: {self.n_ranks} sayi x {self.n_colors} renk>"

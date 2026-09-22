@@ -1,114 +1,129 @@
-"""config/rules.yaml dosyasini okuyup dogrulanmis bir kural nesnesi verir."""
+"""Oyunun butun sayilari tek yerde.
+
+Bu dosya bilerek sade Python: hicbir kutuphane gerekmiyor ve her satirin
+yanina neden oyle oldugunu yazabiliyoruz. Bir sayiyi degistirmek istersen
+asagidaki `DEFAULT_RULES` icinde degistir, motor gerisini kendi ayarlar.
+"""
 from __future__ import annotations
 
-import os
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Dict, List, Sequence
 
-import yaml
+# ---------------------------------------------------------------- varsayilan
 
-DEFAULT_CONFIG_PATH = os.path.join("config", "rules.yaml")
+#: Deste: her renkten 1..8, her karttan **birer** tane -> 24 kart.
+#: Kart sayisi tek oldugu icin "bir kart ya elinde, ya destede, ya da silinmis"
+#: diyebiliyoruz; bu, ilerideki ogrenen ajan icin cok ise yarayacak.
+RANKS: Sequence[int] = (1, 2, 3, 4, 5, 6, 7, 8)
+COLORS: Sequence[str] = ("kirmizi", "mavi", "sari")
+
+#: Ayni sayidan uc kart. Tek kopya oldugu icin bu her zaman "her renkten bir
+#: tane" demek: 5-kirmizi + 5-mavi + 5-sari.
+GROUP_SCORES: Dict[int, int] = {
+    1: 20, 2: 30, 3: 40, 4: 50, 5: 60, 6: 70, 7: 80, 8: 90,
+}
+
+#: Ardisik uc sayi, ucu de ayni renk. Anahtar = serinin en kucuk sayisi.
+RUN_SAME_COLOR_SCORES: Dict[int, int] = {
+    1: 50, 2: 60, 3: 70, 4: 80, 5: 90, 6: 100,
+}
+
+#: Ardisik uc sayi, en az biri farkli renk. Anahtar = serinin en kucuk sayisi.
+RUN_MIXED_SCORES: Dict[int, int] = {
+    1: 10, 2: 20, 3: 30, 4: 40, 5: 50, 6: 60,
+}
+
+#: Tur sonu sandigi: (en dusuk puan, isim). Buyukten kucuge kontrol edilir.
+CHESTS: Sequence[tuple] = (
+    (400, "altin"),
+    (300, "gumus"),
+    (0, "bronz"),
+)
 
 
-@dataclass
-class RewardTier:
-    min_score: int
-    chest: str
-    label: str
-
-
-@dataclass
+@dataclass(frozen=True)
 class Rules:
-    ranks: Sequence[int]
-    colors: Sequence[str]
-    copies: int
-    slots: int
-    combo_size: int
-    hand_size: int
-    group_scores: Dict[int, int]
-    run_mixed_scores: Dict[int, int]
-    run_same_color_scores: Dict[int, int]
-    invalid_score: int
-    rewards: List[RewardTier]
-    agent: dict = field(default_factory=dict)
-    logging: dict = field(default_factory=dict)
-    cost: dict = field(default_factory=dict)
+    """Motorun ihtiyac duydugu her sey.
+
+    `frozen=True`: kurallar oyun sirasinda degismez. Yanlislikla degistirmeyi
+    imkansiz kilmak, "acaba bu tur hangi puan tablosuyla oynandi" sorusunu
+    tamamen ortadan kaldiriyor.
+    """
+
+    ranks: Sequence[int] = RANKS
+    colors: Sequence[str] = COLORS
+    hand_size: int = 5              # elde ayni anda en fazla kac kart olur
+    combo_size: int = 3             # bir kombinasyon kac karttan olusur
+
+    group_scores: Dict[int, int] = field(default_factory=lambda: dict(GROUP_SCORES))
+    run_same_color_scores: Dict[int, int] = field(
+        default_factory=lambda: dict(RUN_SAME_COLOR_SCORES))
+    run_mixed_scores: Dict[int, int] = field(
+        default_factory=lambda: dict(RUN_MIXED_SCORES))
+    chests: Sequence[tuple] = CHESTS
+
+    # ------------------------------------------------------------ turetilen
 
     @property
     def deck_size(self) -> int:
-        return len(self.ranks) * len(self.colors) * self.copies
+        return len(self.ranks) * len(self.colors)
 
     @property
-    def board_capacity(self) -> int:
-        return self.slots * self.combo_size
+    def max_combos(self) -> int:
+        """Hic kart silmeden en fazla kac kombinasyon kurulabilir."""
+        return self.deck_size // self.combo_size
 
     @property
-    def max_score(self) -> int:
-        best_combo = max(
-            list(self.group_scores.values())
-            + list(self.run_mixed_scores.values())
-            + list(self.run_same_color_scores.values())
-        )
-        return best_combo * self.slots
+    def best_combo(self) -> int:
+        return max([*self.group_scores.values(),
+                    *self.run_same_color_scores.values(),
+                    *self.run_mixed_scores.values()])
 
-    def chest_for(self, score: int) -> RewardTier:
-        for tier in sorted(self.rewards, key=lambda t: t.min_score, reverse=True):
-            if score >= tier.min_score:
-                return tier
-        return self.rewards[-1]
+    @property
+    def score_ceiling(self) -> int:
+        """Ust sinir: her kombinasyon en iyi ihtimalle en yuksek puani verse.
+
+        Gercekte ulasilamaz (ayni kartlari iki kombinasyonda kullanamazsin);
+        sadece "yuzde kac" hesaplarinda olcek olarak kullaniliyor.
+        """
+        return self.best_combo * self.max_combos
+
+    def chest_for(self, score: int) -> str:
+        for threshold, name in sorted(self.chests, reverse=True):
+            if score >= threshold:
+                return name
+        return self.chests[-1][1]
 
     def validate(self) -> None:
         if self.combo_size != 3:
             raise ValueError("combo_size su an sadece 3 destekleniyor")
         if self.hand_size < self.combo_size:
-            raise ValueError("hand_size, combo_size'dan kucuk olamaz")
-        if self.slots < 1:
-            raise ValueError("en az bir kombinasyon kurulabilmeli")
-        if not self.rewards:
-            raise ValueError("en az bir odul kademesi tanimlanmali")
+            raise ValueError("elde en az combo_size kadar kart olabilmeli")
+        if len(self.colors) < 2:
+            raise ValueError("en az iki renk gerekli")
+        if not self.chests:
+            raise ValueError("en az bir sandik kademesi tanimlanmali")
+
+    def with_(self, **changes) -> "Rules":
+        """Tek bir ayari degistirilmis yeni kural seti (deneyler icin)."""
+        updated = replace(self, **changes)
+        updated.validate()
+        return updated
 
 
-def _int_keyed(raw: dict | None) -> Dict[int, int]:
-    return {int(k): int(v) for k, v in (raw or {}).items()}
+DEFAULT_RULES = Rules()
+DEFAULT_RULES.validate()
 
 
-def load_rules(path: str = DEFAULT_CONFIG_PATH) -> Rules:
-    with open(path, "r", encoding="utf-8") as handle:
-        data = yaml.safe_load(handle)
-
-    deck = data.get("deck", {})
-    board = data.get("board", {})
-    scoring = data.get("scoring", {})
-
-    ranks = [int(r) for r in deck.get("ranks", [])]
-    colors = [str(c) for c in deck.get("colors", [])]
-    copies = int(deck.get("copies", 1))
-    combo_size = int(board.get("combo_size", 3))
-
-    # Kombinasyon alanlari sirayla acilir; toplam sayilari desteyle belirlenir.
-    # "auto" (varsayilan) = deste / 3.
-    raw_slots = board.get("slots", "auto")
-    if raw_slots in (None, "auto", "otomatik"):
-        slots = (len(ranks) * len(colors) * copies) // combo_size
-    else:
-        slots = int(raw_slots)
-
-    rules = Rules(
-        ranks=ranks,
-        colors=colors,
-        copies=copies,
-        slots=slots,
-        combo_size=combo_size,
-        hand_size=int(board.get("hand_size", 5)),
-        group_scores=_int_keyed(scoring.get("group")),
-        run_mixed_scores=_int_keyed(scoring.get("run_mixed")),
-        run_same_color_scores=_int_keyed(scoring.get("run_same_color")),
-        invalid_score=int(scoring.get("invalid", 0)),
-        rewards=[RewardTier(int(r["min_score"]), str(r["chest"]), str(r.get("label", r["chest"])))
-                 for r in data.get("rewards", [])],
-        agent=data.get("agent", {}) or {},
-        logging=data.get("logging", {}) or {},
-        cost=data.get("cost", {}) or {},
-    )
-    rules.validate()
-    return rules
+def scoring_rows(rules: Rules = DEFAULT_RULES) -> List[dict]:
+    """Puan tablosunu duz liste halinde verir (yazdirmak/gostermek icin)."""
+    rows: List[dict] = []
+    for rank, points in sorted(rules.group_scores.items()):
+        rows.append({"tur": "grup", "desen": f"{rank}-{rank}-{rank}", "puan": points})
+    for start, points in sorted(rules.run_same_color_scores.items()):
+        rows.append({"tur": "seri-ayni-renk",
+                     "desen": f"{start}-{start+1}-{start+2}", "puan": points})
+    for start, points in sorted(rules.run_mixed_scores.items()):
+        rows.append({"tur": "seri-karisik",
+                     "desen": f"{start}-{start+1}-{start+2}", "puan": points})
+    return rows
