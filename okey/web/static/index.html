@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Metin2 Okey — Danışman</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<div class="app">
+
+  <!-- ============================================ ORTA: OYUN ============ -->
+  <main class="game">
+
+    <header class="topbar">
+      <div class="score-block">
+        <span class="label">Puan</span>
+        <strong id="score">0</strong>
+        <span class="chest" id="chest"></span>
+      </div>
+      <div class="counters">
+        <div><span id="combosDone">0</span><small>tamamlanan üçlü</small></div>
+        <div><span id="cardsLeft">24</span><small>destede kart</small></div>
+        <div><span id="combosPossible">8</span><small>kalan üçlü hakkı</small></div>
+      </div>
+    </header>
+    <div class="score-bar"><div class="score-fill" id="scoreFill"></div></div>
+
+    <!-- açık üçlü -->
+    <section class="felt">
+      <div class="felt-head">
+        <span class="caption">AÇIK ÜÇLÜ</span>
+        <span class="target" id="target"></span>
+      </div>
+      <div class="active-slot" id="activeSlot"></div>
+      <div class="felt-actions">
+        <button id="btnComplete" class="btn big hidden">Tamamla</button>
+        <button id="btnDraw" class="btn big hidden">Kart Çek</button>
+      </div>
+      <div class="completions" id="completions"></div>
+    </section>
+
+    <!-- el -->
+    <section class="hand-area">
+      <div class="caption">ELİN
+        <small>sürükleyip üçlüye bırak · sol tık: koy · sağ tık: yok et</small>
+      </div>
+      <div class="hand" id="hand"></div>
+    </section>
+
+    <!-- destede kalanlar + olasılıklar -->
+    <section class="odds-area">
+      <div class="caption">
+        DESTEDE KALANLAR
+        <span class="draws-picker" id="drawsPicker"></span>
+      </div>
+      <div class="odds" id="odds"></div>
+      <div class="odds-note" id="oddsNote"></div>
+    </section>
+
+    <!-- tamamlananlar -->
+    <section class="locked-area" id="lockedArea">
+      <div class="caption">TAMAMLANANLAR</div>
+      <div class="locked" id="locked"></div>
+    </section>
+  </main>
+
+  <!-- ============================================ YAN: DANIŞMAN ========= -->
+  <aside class="side">
+
+    <div class="panel entry hidden" id="entryPanel">
+      <h3 id="entryTitle">Kart girişi</h3>
+      <div class="picker" id="picker"></div>
+      <div class="entry-row">
+        <input id="entryText" type="text" placeholder="veya yaz: 7r 4b 1g" autocomplete="off">
+        <button id="btnEntryAdd" class="btn">Ekle</button>
+      </div>
+      <div class="staging" id="staging"></div>
+      <div class="buttons">
+        <button id="btnEntryConfirm" class="btn primary">Onayla</button>
+        <button id="btnEntryClear" class="btn">Temizle</button>
+        <button id="btnNoMore" class="btn">Deste bitti</button>
+      </div>
+    </div>
+
+    <div class="panel" id="advicePanel">
+      <h3>Ne yapmalıyım?</h3>
+      <div class="buttons">
+        <button id="btnAdvise" class="btn primary">Öneri Al</button>
+        <button id="btnDeep" class="btn"
+                title="Her aday hamle için turu defalarca sonuna kadar simüle eder. Yavaş ama isabetli.">Derin Analiz</button>
+      </div>
+      <div class="advice-reason" id="adviceReason"></div>
+      <ol class="steps" id="steps"></ol>
+      <div class="buttons" id="adviceButtons"></div>
+    </div>
+
+    <div class="status" id="agentStatus">Ollama kontrol ediliyor…</div>
+
+    <div class="panel">
+      <div class="buttons">
+        <button id="btnNew" class="btn primary">Yeni Tur</button>
+        <button id="btnUndo" class="btn danger">Geri Al</button>
+      </div>
+      <div class="field">
+        <label for="agentMode">Karar verici</label>
+        <select id="agentMode">
+          <option value="hybrid">LLM + solver yedek</option>
+          <option value="llm">Sadece LLM</option>
+          <option value="solver">Sadece solver</option>
+        </select>
+      </div>
+      <label class="check"><input type="checkbox" id="showHints"> Solver sıralamasını göster</label>
+      <ul class="hints" id="hints"></ul>
+    </div>
+
+    <div class="panel grow">
+      <h3>Yapılanlar</h3>
+      <ul class="events" id="events"><li class="muted">Henüz hamle yok.</li></ul>
+    </div>
+
+    <div class="panel">
+      <h3>Geçmiş turlar <span class="muted small">logs/games.csv</span></h3>
+      <div class="stats" id="stats"><span class="muted">—</span></div>
+      <table class="log" id="logTable"></table>
+    </div>
+
+    <div class="panel">
+      <h3>Puan tablosu</h3>
+      <div class="scoring" id="scoring"></div>
+    </div>
+  </aside>
+</div>
+
+<script src="/static/app.js"></script>
+</body>
+</html>
